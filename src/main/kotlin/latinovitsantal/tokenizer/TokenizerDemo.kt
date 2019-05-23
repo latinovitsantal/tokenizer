@@ -1,10 +1,13 @@
 package latinovitsantal.tokenizer
 
+import javafx.event.EventHandler
 import javafx.geometry.Orientation.HORIZONTAL
 import javafx.geometry.Orientation.VERTICAL
+import javafx.scene.control.CheckBox
 import javafx.scene.control.Label
 import javafx.scene.control.TextArea
 import javafx.scene.control.TreeItem
+import javafx.scene.layout.Priority.ALWAYS
 import javafx.scene.layout.StackPane
 import javafx.scene.text.Font
 import javafx.stage.Stage
@@ -28,21 +31,43 @@ class MainView: View() {
     lateinit var textArea: TextArea
     lateinit var treePane: StackPane
     lateinit var errorLabel: Label
-    var tokenGroup: TokenGroup? = null
+    lateinit var showsClassCheckbox: CheckBox
+    lateinit var rootTreeItem: TreeItem<Token>
+    var tokenGroup = TokenGroup()
 
     override val root = splitpane(VERTICAL) {
         splitpane(HORIZONTAL) {
             stackpane {
                 textArea = textarea(demoText) {
-                    textProperty().addListener { _,_,_ -> tryRefreshTree() }
+                    textProperty().addListener { _,_,_ -> refreshTokenGroup() }
                 }
             }
-            treePane = stackpane()
+            vbox {
+                hbox {
+                    vboxConstraints { marginTopBottom(2.0) }
+                    button("Expand all") {
+                        hboxConstraints { marginLeftRight(2.0) }
+                        onMouseClicked = EventHandler { rootTreeItem.setIsExpandedAll(true) }
+                    }
+                    button("Collapse all") {
+                        hboxConstraints { marginRight = 2.0 }
+                        onMouseClicked = EventHandler { rootTreeItem.setIsExpandedAll(false) }
+                    }
+                    showsClassCheckbox = checkbox("Show classnames") {
+                        selectedProperty().addListener { _,_, isSelected ->
+                            refreshTree(isSelected)
+                        }
+                    }
+                }
+                treePane = stackpane {
+                    vgrow = ALWAYS
+                }
+            }
         }
         errorLabel = label()
     }
 
-    private fun tryRefreshTree() {
+    private fun refreshTokenGroup() {
         try {
             val newTokenGroup = TokenGroup.from(textArea.text, specials)
             if (newTokenGroup == tokenGroup)
@@ -50,20 +75,28 @@ class MainView: View() {
             else {
                 errorLabel.text = "tokens updated"
                 tokenGroup = newTokenGroup
-                refreshTree()
+                refreshTree(showsClassCheckbox.isSelected)
             }
         } catch (e: Exception) {
             errorLabel.text = e.message
         }
     }
 
-    private fun refreshTree() {
+    private fun refreshTree(showsClassnames: Boolean) {
         treePane.run {
             clear()
-            treeview(TreeItem<Token>(tokenGroup)) {
-                isShowRoot = false
+            rootTreeItem =  TreeItem(tokenGroup)
+            treeview(rootTreeItem) {
                 cellFormat {
                     text = it.representation
+                    if (showsClassnames) {
+                        val clazz = when (it) {
+                            is Symbol -> Symbol::class.java
+                            is TokenGroup -> TokenGroup::class.java
+                            else -> it::class.java
+                        }
+                        text += " (${clazz.simpleName})"
+                    }
                     font = Font.font("Source Code Pro", 12.0)
                     paddingAll = 0.0
                     if (it is TokenGroup) style {
@@ -74,18 +107,19 @@ class MainView: View() {
                     val token = it.value
                     if (token is TokenGroup) token.tokens else null
                 }
-                expand(root)
+                root.setIsExpandedAll(true)
             }
         }
     }
 
-    private fun <T> expand(treeItem: TreeItem<T>) {
-        treeItem.isExpanded = true
-        treeItem.children.forEach(this::expand)
+    private fun <T> TreeItem<T>.setIsExpandedAll(isExpanded: Boolean) {
+        this.isExpanded = isExpanded
+        children.forEach { it.setIsExpandedAll(isExpanded) }
     }
 
     init {
-        tryRefreshTree()
+        refreshTree(showsClassCheckbox.isSelected)
+        refreshTokenGroup()
     }
 
 }
